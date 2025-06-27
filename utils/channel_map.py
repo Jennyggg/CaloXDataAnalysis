@@ -1,4 +1,5 @@
 import numpy as np
+import re
 from utils.CaloXChannel import FERSBoard, DRSBoard
 
 
@@ -225,6 +226,20 @@ def buildTimeReferenceChannels(run=316):
             f"Unsupported run number {run} for time reference channels.")
 
     return time_reference_channels
+
+def mapDRSChannel2TriggerChannel(DRS_channel, run = 685):
+    """
+    Returns the name of trigger channel corresponding to a Cer or Sci channel of DRS readout.
+    """
+    board, group, _ = re.findall(r'\d+', DRS_channel)
+    if run < 583:
+        if board == "0" or board == "2": return f"DRS_Board{board}_Group{group}_Channel7"
+        elif board == "1": return f"DRS_Board{board}_Group{group}_Channel0"
+    elif run >= 685:
+        return f"DRS_Board{board}_Group{group}_Channel8"
+    else:
+        raise ValueError(
+            f"Unsupported run number {run} for time reference channels.")
 
 
 def buildHodoTriggerChannels(run=316):
