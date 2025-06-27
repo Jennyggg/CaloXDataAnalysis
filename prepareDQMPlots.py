@@ -1,13 +1,14 @@
 import os
 import ROOT
-from utils.channel_map import buildDRSBoards, buildFERSBoards, buildTimeReferenceChannels, buildHodoTriggerChannels, buildHodoPosChannels
+from utils.channel_map import buildDRSBoards, buildFERSBoards, buildTimeReferenceChannels, buildHodoTriggerChannels, buildHodoPosChannels, mapDRSChannel2TriggerChannel
 from utils.utils import number2string, getDataFile, processDRSBoards, filterPrefireEvents
+
 from runNumber import runNumber
 import time
 
 print("Start running prepareDQMPlots.py")
 
-runNumber = 662
+
 deltaTThreCer = 12.0
 deltaTThreSci = 15.0
 
@@ -32,6 +33,7 @@ print(f"Total number of events: {nEvents} in run {runNumber}")
 
 DRSBoards = buildDRSBoards(run=runNumber)
 FERSBoards = buildFERSBoards(run=runNumber)
+trigger_channels = buildTimeReferenceChannels(run=runNumber)
 
 # FRES board outputs
 # define variables as RDF does not support reading vectors
@@ -53,9 +55,9 @@ ROOT.gInterpreter.Declare("""
 #include "ROOT/RVec.hxx"
 #include <algorithm>
 
-size_t compute_deltaT(ROOT::RVec<float> vec, float threshold) {
+size_t compute_peakT(ROOT::RVec<float> vec, float threshold) {
     if (vec.empty()) return -9999;
-    size_t deltaT = std::distance(vec.begin(),std::max_element(vec.begin(), vec.end()));
+    size_t peakT = std::distance(vec.begin(),std::max_element(vec.begin(), vec.end()));
     std::sort(vec.begin(), vec.end());
     size_t n = vec.size();
     if (n % 2 == 0){
@@ -64,18 +66,54 @@ size_t compute_deltaT(ROOT::RVec<float> vec, float threshold) {
     else{
         if (vec[n-1] - vec[n / 2] < 15) return -9999;
     }
-    return deltaT;
+    return peakT;
 }
 """)
 for varname in drs_branches:
-    print(varname)
+    rdf = rdf.Define(
+        f"{varname}_peakT_threCer",
+        f"compute_peakT({varname},{deltaTThreCer})"
+    )
+    rdf = rdf.Define(
+        f"{varname}_peakT_threSci",
+        f"compute_peakT({varname},{deltaTThreSci})"
+    )
+
+
+ROOT.gInterpreter.Declare("""
+#include "ROOT/RVec.hxx"
+#include <algorithm>
+
+size_t compute_triggerT(ROOT::RVec<float> vec) {
+    if (vec.empty()) return -9999;
+    size_t minT = std::distance(vec.begin(),std::min_element(vec.begin(), vec.end()));
+    size_t maxT = std::distance(vec.begin(),std::max_element(vec.begin(), std::min_element(vec.begin(), vec.end())));
+                             
+    double half = (*std::min_element(vec.begin(), vec.end()) + *std::max_element(vec.begin(), std::min_element(vec.begin(), vec.end())))/2;
+                          
+    for(size_t iT = maxT; iT < minT; iT++){
+        if( (vec[iT] > half) && (vec[iT+1] <= half) )         
+            return (vec[iT] - half) > (half - vec[iT+1]) ? (iT+1) : iT ;      
+    }
+    return 0;          
+}
+""")
+
+for trigname in trigger_channels:
+    rdf = rdf.Define(
+        f"{trigname}_triggerT",
+        f"compute_triggerT({trigname})"
+    )
+
+for varname in drs_branches:
+    triggername = mapDRSChannel2TriggerChannel(varname)
     rdf = rdf.Define(
         f"{varname}_deltaT_threCer",
-        f"compute_deltaT({varname},{deltaTThreCer})"
+        f"{varname}_peakT_threCer - {trigname}_triggerT + 1024"
     )
     rdf = rdf.Define(
         f"{varname}_deltaT_threSci",
-        f"compute_deltaT({varname},{deltaTThreSci})"
+        f"{varname}_peakT_threSci - {trigname}_triggerT + 1024"
     )
 
 def makeFERS1DPlots():
@@ -197,20 +235,33 @@ def makeDRS1DPlots():
                     channelName
                 )
                 if var == "Cer":
+                    hist_peakT = rdf.Histo1D((
+                        f"hist_DRS_Board{boardNo}_{var}_{sTowerX}_{sTowerY}_peakT",
+                        f"DRS Board {boardNo} - {var} iTowerX {sTowerX} iTowerY {sTowerY} (peak T);peak TS;Counts",
+                        1024, 0, 1024),
+                        channelName + "_peakT_threCer"
+                    )
                     hist_deltaT = rdf.Histo1D((
                         f"hist_DRS_Board{boardNo}_{var}_{sTowerX}_{sTowerY}_deltaT",
-                        f"DRS Board {boardNo} - {var} iTowerX {sTowerX} iTowerY {sTowerY} (delta T);delta TS;Counts",
-                        1024, 0, 1024),
+                        f"DRS Board {boardNo} - {var} iTowerX {sTowerX} iTowerY {sTowerY} (delta T +1024);peak TS - trigger TS + 1024;Counts",
+                        2048, 0, 2048),
                         channelName + "_deltaT_threCer"
                     )
                 else:
+                    hist_peakT = rdf.Histo1D((
+                        f"hist_DRS_Board{boardNo}_{var}_{sTowerX}_{sTowerY}_peakT",
+                        f"DRS Board {boardNo} - {var} iTowerX {sTowerX} iTowerY {sTowerY} (peak T);delta TS;Counts",
+                        1024, 0, 1024),
+                        channelName + "_peakT_threSci"
+                    )
                     hist_deltaT = rdf.Histo1D((
                         f"hist_DRS_Board{boardNo}_{var}_{sTowerX}_{sTowerY}_deltaT",
-                        f"DRS Board {boardNo} - {var} iTowerX {sTowerX} iTowerY {sTowerY} (delta T);delta TS;Counts",
-                        1024, 0, 1024),
+                        f"DRS Board {boardNo} - {var} iTowerX {sTowerX} iTowerY {sTowerY} (delta T + 1024);peak TS - trigger TS + 1024;Counts",
+                        2048, 0, 2048),
                         channelName + "_deltaT_threSci"
                     )
                 hists1d_DRS.append(hist)
+                hists1d_DRS.append(hist_peakT)
                 hists1d_DRS.append(hist_deltaT)
     return hists1d_DRS
 
@@ -275,13 +326,6 @@ def trackDRSPlots():
 def compareDRSChannels(channels_to_compare):
     hists_trigger = []
     for chan_name in channels_to_compare:
-        # hist = rdf.Histo2D((
-        #    f"hist_{chan_name}",
-        #    f"{chan_name};TS;DRS values",
-        #    1024, 0, 1024,
-        #    200, 500, 2500),
-        #    "TS", chan_name
-        # )
         hist_subtractMedian = rdf.Histo2D((
             f"hist_{chan_name}_subtractMedian",
             f"{chan_name} (subtract median);TS;DRS values",
@@ -289,8 +333,14 @@ def compareDRSChannels(channels_to_compare):
             300, -2500, 500),
             "TS", chan_name + "_subtractMedian"
         )
-        # hists_trigger.append(hist)
+        hist_TSmerge = rdf.Histo1D((
+                    f"hist_{chan_name}_TSmerge",
+                    f"{chan_name} (TS merge);TS edges;Counts",
+                    1024, 0, 1024),
+                    chan_name + "_triggerT"
+                )
         hists_trigger.append(hist_subtractMedian)
+        hists_trigger.append(hist_TSmerge)
     return hists_trigger
 
 

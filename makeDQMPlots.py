@@ -7,6 +7,8 @@ from utils.utils import number2string
 from utils.html_generator import generate_html
 from utils.validateMap import DrawFERSBoards, DrawDRSBoards
 from runNumber import runNumber
+from TSwindow import peakTSWindow, deltaTSWindow 
+import numpy as np
 
 print("Start running script")
 ROOT.gROOT.SetBatch(True)
@@ -215,6 +217,70 @@ def makeDRS1DPlots():
     return output_html
 
 
+# PeakT distributions of DRS peaks passing certain thresholds
+plots = []
+infile_name = f"{rootdir}/drs_all_channels_1D.root"
+infile = ROOT.TFile(infile_name, "READ")
+hist_C_merge = None
+hist_S_merge = None
+for _, DRSBoard in DRSBoards.items():
+    boardNo = DRSBoard.boardNo
+    for iTowerX, iTowerY in DRSBoard.GetListOfTowers():
+        sTowerX = number2string(iTowerX)
+        sTowerY = number2string(iTowerY)
+
+        chan_Cer = DRSBoard.GetChannelByTower(iTowerX, iTowerY, isCer=True)
+        chan_Sci = DRSBoard.GetChannelByTower(iTowerX, iTowerY, isCer=False)
+
+        hist_C_name = f"hist_DRS_Board{boardNo}_Cer_{sTowerX}_{sTowerY}_peakT"
+        hist_S_name = f"hist_DRS_Board{boardNo}_Sci_{sTowerX}_{sTowerY}_peakT"
+        hist_C = infile.Get(hist_C_name)
+        hist_S = infile.Get(hist_S_name)
+        if hist_C:
+            if hist_C_merge:
+                hist_C_merge.Add(hist_C)
+            else:
+                hist_C_merge = hist_C.Clone("hist_DRS_Cer_peakT_merge")
+        if hist_S:
+            if hist_S_merge:
+                hist_S_merge.Add(hist_S)
+            else:
+                hist_S_merge = hist_S.Clone("hist_DRS_Sci_peakT_merge")
+if not hist_C_merge or not hist_S_merge:
+    print(
+        f"Warning: Histograms hist_DRS_Cer_peakT_merge or hist_DRS_Sci_peakT_merge created")
+else:
+    bin_centers = (np.arange(peakTSWindow[0],peakTSWindow[1])+np.arange(peakTSWindow[0]+1,peakTSWindow[1]+1))/2
+    hist_C_merge_window_y = np.array([hist_C_merge.GetBinContent(i) for i in range(peakTSWindow[0]+1,peakTSWindow[1]+1)])
+    C_mean = np.average(bin_centers, weights = hist_C_merge_window_y)
+    C_std = np.sqrt(np.average((bin_centers-C_mean)**2, weights = hist_C_merge_window_y))
+    hist_S_merge_window_y = np.array([hist_S_merge.GetBinContent(i) for i in range(peakTSWindow[0]+1,peakTSWindow[1]+1)])
+    S_mean = np.average(bin_centers, weights = hist_S_merge_window_y)
+    S_std = np.sqrt(np.average((bin_centers-S_mean)**2, weights = hist_S_merge_window_y))
+    hist_C_merge.Rebin(10)
+    hist_S_merge.Rebin(10)
+    extraToDraw = ROOT.TPaveText(0.20, 0.65, 0.60, 0.90, "NDC")
+    extraToDraw.SetTextAlign(11)
+    extraToDraw.SetFillColorAlpha(0, 0)
+    extraToDraw.SetBorderSize(0)
+    extraToDraw.SetTextFont(42)
+    extraToDraw.SetTextSize(0.04)
+    extraToDraw.AddText(f"Merged peak TS for all broads")
+    extraToDraw.AddText(f"TS window: [{peakTSWindow[0]}, {peakTSWindow[1]}]")
+    extraToDraw.AddText(f"Sci mean: {S_mean:.2f}, std: {S_std:.2f}")
+    extraToDraw.AddText(f"Cer mean: {C_mean:.2f}, std: {C_std:.2f}")
+    output_name = f"DRS_PeakT_Merged"
+    outdir_plots = outdir + "/DRS_1D"
+    DrawHistos([hist_C_merge,hist_S_merge], ["Cer","Sci"], peakTSWindow[0], peakTSWindow[1], "peak TS", 0.5, 1e6, "Counts",
+        output_name,
+        dology=True, drawoptions="HIST", mycolors=[2,4], addOverflow=True, extraToDraw=extraToDraw,
+        legendPos=(0.70, 0.88, 0.90, 0.68),
+        outdir=outdir_plots)
+    plots.append(output_name + ".png")
+
+    generate_html(plots, outdir_plots,
+              output_html=f"html/Run{runNumber}/DRS_peakT/viewer.html")
+    
 # DeltaT distributions of DRS peaks passing certain thresholds
 plots = []
 infile_name = f"{rootdir}/drs_all_channels_1D.root"
@@ -234,8 +300,6 @@ for _, DRSBoard in DRSBoards.items():
         hist_S_name = f"hist_DRS_Board{boardNo}_Sci_{sTowerX}_{sTowerY}_deltaT"
         hist_C = infile.Get(hist_C_name)
         hist_S = infile.Get(hist_S_name)
-        print("hist_C",hist_C)
-        print("hist_S",hist_S)
         if hist_C:
             if hist_C_merge:
                 hist_C_merge.Add(hist_C)
@@ -250,6 +314,19 @@ if not hist_C_merge or not hist_S_merge:
     print(
         f"Warning: Histograms hist_DRS_Cer_deltaT_merge or hist_DRS_Sci_deltaT_merge created")
 else:
+    bin_edges = np.linspace(deltaTSWindow[0]+1024, deltaTSWindow[1]+1024, deltaTSWindow[1] - deltaTSWindow[0] + 1, dtype='float64')
+    hist_C_merge_window =  hist_C_merge.Rebin(deltaTSWindow[1] - deltaTSWindow[0],"hist_C_merge_window",bin_edges)
+    hist_C_merge_window.ClearUnderflowAndOverflow()
+    hist_S_merge_window =  hist_S_merge.Rebin(deltaTSWindow[1] - deltaTSWindow[0],"hist_S_merge_window",bin_edges)
+    hist_S_merge_window.ClearUnderflowAndOverflow()
+
+    bin_centers = (np.arange(deltaTSWindow[0]+1024,deltaTSWindow[1]+1024)+np.arange(deltaTSWindow[0]+1025,deltaTSWindow[1]+1025))/2
+    hist_C_merge_window_y = np.array([hist_C_merge.GetBinContent(i) for i in range(deltaTSWindow[0]+1025,deltaTSWindow[1]+1025)])
+    C_mean = np.average(bin_centers, weights = hist_C_merge_window_y)
+    C_std = np.sqrt(np.average((bin_centers-C_mean)**2, weights = hist_C_merge_window_y))
+    hist_S_merge_window_y = np.array([hist_S_merge.GetBinContent(i) for i in range(deltaTSWindow[0]+1025,deltaTSWindow[1]+1025)])
+    S_mean = np.average(bin_centers, weights = hist_S_merge_window_y)
+    S_std = np.sqrt(np.average((bin_centers-S_mean)**2, weights = hist_S_merge_window_y))
     hist_C_merge.Rebin(10)
     hist_S_merge.Rebin(10)
     extraToDraw = ROOT.TPaveText(0.20, 0.65, 0.60, 0.90, "NDC")
@@ -259,12 +336,15 @@ else:
     extraToDraw.SetTextFont(42)
     extraToDraw.SetTextSize(0.04)
     extraToDraw.AddText(f"Merged delta TS for all broads")
-    output_name = f"DRS_PeakDeltaT_Merged"
+    extraToDraw.AddText(f"TS window: [{deltaTSWindow[0]+1024}, {deltaTSWindow[1]+1024}]")
+    extraToDraw.AddText(f"Sci mean: {S_mean:.2f}, std: {S_std:.2f}")
+    extraToDraw.AddText(f"Cer mean: {C_mean:.2f}, std: {C_std:.2f}")
+    output_name = f"DRS_DeltaT_Merged"
     outdir_plots = outdir + "/DRS_1D"
-    DrawHistos([hist_C_merge,hist_S_merge], ["Cer","Sci"], 10, 1000, "delta TS", 1, 1e6, "Counts",
+    DrawHistos([hist_C_merge,hist_S_merge], ["Cer","Sci"], deltaTSWindow[0]+1024, deltaTSWindow[1]+1024, "peak TS - trigger TS + 1024", 0.5, 1e6, "Counts",
         output_name,
         dology=True, drawoptions="HIST", mycolors=[2,4], addOverflow=True, extraToDraw=extraToDraw,
-        legendPos=(0.60, 0.78, 0.90, 0.68),
+        legendPos=(0.7, 0.88, 0.90, 0.68),
         outdir=outdir_plots)
     plots.append(output_name + ".png")
 
@@ -410,6 +490,7 @@ def compareTimeReferencePlots(doSubtractMedian=False):
         plots.append(output_name + ".png")
 
     output_html = f"html/Run{runNumber}/TimeReference{suffix}/index.html"
+
     generate_html(plots, outdir_plots, plots_per_row=2,
                   output_html=output_html)
     return output_html
