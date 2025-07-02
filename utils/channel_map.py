@@ -236,7 +236,8 @@ def mapDRSChannel2TriggerChannel(DRS_channel, run = 685):
         if board == "0" or board == "2": return f"DRS_Board{board}_Group{group}_Channel7"
         elif board == "1": return f"DRS_Board{board}_Group{group}_Channel0"
     elif run >= 685:
-        return f"DRS_Board{board}_Group{group}_Channel8"
+        if board == "0": return "DRS_Board0_Group2_Channel0"
+        else: return f"DRS_Board{board}_Group{group}_Channel8"
     else:
         raise ValueError(
             f"Unsupported run number {run} for time reference channels.")
