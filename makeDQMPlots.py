@@ -215,6 +215,62 @@ def makeDRS1DPlots():
     return output_html
 
 
+# DeltaT distributions of DRS peaks passing certain thresholds
+plots = []
+infile_name = f"{rootdir}/drs_all_channels_1D.root"
+infile = ROOT.TFile(infile_name, "READ")
+hist_C_merge = None
+hist_S_merge = None
+for _, DRSBoard in DRSBoards.items():
+    boardNo = DRSBoard.boardNo
+    for iTowerX, iTowerY in DRSBoard.GetListOfTowers():
+        sTowerX = number2string(iTowerX)
+        sTowerY = number2string(iTowerY)
+
+        chan_Cer = DRSBoard.GetChannelByTower(iTowerX, iTowerY, isCer=True)
+        chan_Sci = DRSBoard.GetChannelByTower(iTowerX, iTowerY, isCer=False)
+
+        hist_C_name = f"hist_DRS_Board{boardNo}_Cer_{sTowerX}_{sTowerY}_deltaT"
+        hist_S_name = f"hist_DRS_Board{boardNo}_Sci_{sTowerX}_{sTowerY}_deltaT"
+        hist_C = infile.Get(hist_C_name)
+        hist_S = infile.Get(hist_S_name)
+        print("hist_C",hist_C)
+        print("hist_S",hist_S)
+        if hist_C:
+            if hist_C_merge:
+                hist_C_merge.Add(hist_C)
+            else:
+                hist_C_merge = hist_C.Clone("hist_DRS_Cer_deltaT_merge")
+        if hist_S:
+            if hist_S_merge:
+                hist_S_merge.Add(hist_S)
+            else:
+                hist_S_merge = hist_S.Clone("hist_DRS_Sci_deltaT_merge")
+if not hist_C_merge or not hist_S_merge:
+    print(
+        f"Warning: Histograms hist_DRS_Cer_deltaT_merge or hist_DRS_Sci_deltaT_merge created")
+else:
+    hist_C_merge.Rebin(10)
+    hist_S_merge.Rebin(10)
+    extraToDraw = ROOT.TPaveText(0.20, 0.65, 0.60, 0.90, "NDC")
+    extraToDraw.SetTextAlign(11)
+    extraToDraw.SetFillColorAlpha(0, 0)
+    extraToDraw.SetBorderSize(0)
+    extraToDraw.SetTextFont(42)
+    extraToDraw.SetTextSize(0.04)
+    extraToDraw.AddText(f"Merged delta TS for all broads")
+    output_name = f"DRS_PeakDeltaT_Merged"
+    outdir_plots = outdir + "/DRS_1D"
+    DrawHistos([hist_C_merge,hist_S_merge], ["Cer","Sci"], 10, 1000, "delta TS", 1, 1e6, "Counts",
+        output_name,
+        dology=True, drawoptions="HIST", mycolors=[2,4], addOverflow=True, extraToDraw=extraToDraw,
+        legendPos=(0.60, 0.78, 0.90, 0.68),
+        outdir=outdir_plots)
+    plots.append(output_name + ".png")
+
+    generate_html(plots, outdir_plots,
+              output_html=f"html/Run{runNumber}/DRS_deltaT/viewer.html")
+
 # DRS vs TS
 def makeDRS2DPlots(doSubtractMedian=False):
     suffix = ""

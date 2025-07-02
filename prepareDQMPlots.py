@@ -7,6 +7,11 @@ import time
 
 print("Start running prepareDQMPlots.py")
 
+runNumber = 662
+deltaTThreCer = 12.0
+deltaTThreSci = 15.0
+
+
 # multi-threading support
 ROOT.ROOT.EnableImplicitMT(10)
 ROOT.gSystem.Load("utils/functions_cc.so")  # Load the compiled C++ functions
@@ -44,6 +49,34 @@ for _, FERSBoard in FERSBoards.items():
 
 rdf = processDRSBoards(rdf)
 
+ROOT.gInterpreter.Declare("""
+#include "ROOT/RVec.hxx"
+#include <algorithm>
+
+size_t compute_deltaT(ROOT::RVec<float> vec, float threshold) {
+    if (vec.empty()) return -9999;
+    size_t deltaT = std::distance(vec.begin(),std::max_element(vec.begin(), vec.end()));
+    std::sort(vec.begin(), vec.end());
+    size_t n = vec.size();
+    if (n % 2 == 0){
+        if  (vec[n-1] - 0.5 * (vec[n / 2 - 1] + vec[n / 2]) < threshold) return -9999;
+    }
+    else{
+        if (vec[n-1] - vec[n / 2] < 15) return -9999;
+    }
+    return deltaT;
+}
+""")
+for varname in drs_branches:
+    print(varname)
+    rdf = rdf.Define(
+        f"{varname}_deltaT_threCer",
+        f"compute_deltaT({varname},{deltaTThreCer})"
+    )
+    rdf = rdf.Define(
+        f"{varname}_deltaT_threSci",
+        f"compute_deltaT({varname},{deltaTThreSci})"
+    )
 
 def makeFERS1DPlots():
     hists1d_FERS = []
@@ -163,7 +196,22 @@ def makeDRS1DPlots():
                     200, value_mean - 100, value_mean + 100),
                     channelName
                 )
+                if var == "Cer":
+                    hist_deltaT = rdf.Histo1D((
+                        f"hist_DRS_Board{boardNo}_{var}_{sTowerX}_{sTowerY}_deltaT",
+                        f"DRS Board {boardNo} - {var} iTowerX {sTowerX} iTowerY {sTowerY} (delta T);delta TS;Counts",
+                        1024, 0, 1024),
+                        channelName + "_deltaT_threCer"
+                    )
+                else:
+                    hist_deltaT = rdf.Histo1D((
+                        f"hist_DRS_Board{boardNo}_{var}_{sTowerX}_{sTowerY}_deltaT",
+                        f"DRS Board {boardNo} - {var} iTowerX {sTowerX} iTowerY {sTowerY} (delta T);delta TS;Counts",
+                        1024, 0, 1024),
+                        channelName + "_deltaT_threSci"
+                    )
                 hists1d_DRS.append(hist)
+                hists1d_DRS.append(hist_deltaT)
     return hists1d_DRS
 
 
