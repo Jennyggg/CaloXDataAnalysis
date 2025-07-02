@@ -9,6 +9,7 @@ from utils.validateMap import DrawFERSBoards, DrawDRSBoards
 from runNumber import runNumber
 from TSwindow import peakTSWindow, deltaTSWindow 
 import numpy as np
+from DRSPeakTre import threBinsSci,threBinsCer, threColorsSci, threColorsCer, threBoardColorSci, threBoardColorCer
 
 print("Start running script")
 ROOT.gROOT.SetBatch(True)
@@ -166,15 +167,91 @@ def trackFERSPlots():
 
 # 1D histograms for DRS variables
 def makeDRS1DPlots():
+    # PeakT distributions of DRS peaks passing certain thresholds
     plots = []
     infile_name = f"{rootdir}/drs_all_channels_1D.root"
     infile = ROOT.TFile(infile_name, "READ")
+    hist_C_merge = [None]*(len(threBinsCer)-1)
+    hist_S_merge = [None]*(len(threBinsSci)-1)
+    hist_C_merge_board = {}
+    hist_S_merge_board = {}
+
     for _, DRSBoard in DRSBoards.items():
         boardNo = DRSBoard.boardNo
+        hist_C_merge_board[boardNo] = [None]*(len(threBinsCer)-1)
+        hist_S_merge_board[boardNo] = [None]*(len(threBinsSci)-1)
         for iTowerX, iTowerY in DRSBoard.GetListOfTowers():
             sTowerX = number2string(iTowerX)
             sTowerY = number2string(iTowerY)
+            for ithr in range(len(threBinsCer)-1):
+                hist_C_name = f"hist_DRS_Board{boardNo}_Cer_{sTowerX}_{sTowerY}_peakT_amp{threBinsCer[ithr]}-{threBinsCer[ithr+1]}"
+                hist_C = infile.Get(hist_C_name)
+                if hist_C:
+                    if hist_C_merge[ithr]:
+                        hist_C_merge[ithr].Add(hist_C)
+                    else:
+                        hist_C_merge[ithr] = hist_C.Clone(f"hist_DRS_Cer_peakT_merge_amp{threBinsCer[ithr]}-{threBinsCer[ithr+1]}")
+                    if hist_C_merge_board[boardNo][ithr]:
+                        hist_C_merge_board[boardNo][ithr].Add(hist_C)
+                    else:
+                        hist_C_merge_board[boardNo][ithr] = hist_C.Clone(f"hist_DRS_board{boardNo}_Cer_peakT_merge_amp{threBinsCer[ithr]}-{threBinsCer[ithr+1]}")
+            for ithr in range(len(threBinsSci)-1):
+                hist_S_name = f"hist_DRS_Board{boardNo}_Sci_{sTowerX}_{sTowerY}_peakT_amp{threBinsSci[ithr]}-{threBinsSci[ithr+1]}"
+                hist_S = infile.Get(hist_S_name)
+                if hist_S:
+                    if hist_S_merge[ithr]:
+                        hist_S_merge[ithr].Add(hist_S)
+                    else:
+                        hist_S_merge[ithr] = hist_S.Clone(f"hist_DRS_Sci_peakT_merge_amp{threBinsSci[ithr]}-{threBinsSci[ithr+1]}")
+                    if hist_S_merge_board[boardNo][ithr]:
+                        hist_S_merge_board[boardNo][ithr].Add(hist_S)
+                    else:
+                        hist_S_merge_board[boardNo][ithr] = hist_S.Clone(f"hist_DRS_board{boardNo}_Sci_peakT_merge_amp{threBinsSci[ithr]}-{threBinsSci[ithr+1]}")
+    if None in  hist_C_merge or None in hist_S_merge:
+        print(
+            f"Warning: Histograms hist_DRS_Cer_peakT_merge or hist_DRS_Sci_peakT_merge has None")
+    else:
+        bin_centers = (np.arange(peakTSWindow[0],peakTSWindow[1])+np.arange(peakTSWindow[0]+1,peakTSWindow[1]+1))/2
+        C_mean = []
+        C_std = []
+        S_mean = []
+        S_std = []
+        label_C_merge = []
+        label_S_merge = []
+        for ithr in range(len(threBinsCer)-1):
+            hist_C_merge_window_y = np.array([hist_C_merge[ithr].GetBinContent(i) for i in range(peakTSWindow[0]+1,peakTSWindow[1]+1)])
+            C_mean.append(np.average(bin_centers, weights = hist_C_merge_window_y))
+            C_std.append(np.sqrt(np.average((bin_centers-C_mean[ithr])**2, weights = hist_C_merge_window_y)))
+            hist_C_merge[ithr].Rebin(10)
+            label_C_merge.append(f"Cer amp: {threBinsCer[ithr]}-{threBinsCer[ithr+1]}")
+        for ithr in range(len(threBinsSci)-1):
+            hist_S_merge_window_y = np.array([hist_S_merge[ithr].GetBinContent(i) for i in range(peakTSWindow[0]+1,peakTSWindow[1]+1)])
+            S_mean.append(np.average(bin_centers, weights = hist_S_merge_window_y))
+            S_std.append(np.sqrt(np.average((bin_centers-S_mean[ithr])**2, weights = hist_S_merge_window_y)))
+            hist_S_merge[ithr].Rebin(10)
+            label_S_merge.append(f"Sci amp: {threBinsSci[ithr]}-{threBinsSci[ithr+1]}")
+        extraToDraw = ROOT.TPaveText(0.15, 0.65, 0.9, 0.9, "NDC")
+        extraToDraw.SetTextAlign(11)
+        extraToDraw.SetFillColorAlpha(0, 0)
+        extraToDraw.SetBorderSize(0)
+        extraToDraw.SetTextFont(42)
+        extraToDraw.SetTextSize(0.04)
+        extraToDraw.AddText(f"Merged peak TS for all broads")
+        extraToDraw.AddText(f"TS window: [{peakTSWindow[0]}, {peakTSWindow[1]}]")
+        extraToDraw.AddText(f"Sci amp: {threBinsSci}, Cer amp: {threBinsCer}")
+        extraToDraw.AddText("Sci std: "+", ".join([f"{S_std[ithr]:.2f}" for ithr in range(len(threBinsSci)-1)]))
+        extraToDraw.AddText("Cer std: "+", ".join([f"{C_std[ithr]:.2f}" for ithr in range(len(threBinsCer)-1)]))
+        output_name = f"DRS_PeakT_Merged"
+        outdir_plots = outdir + "/DRS_1D"
+        DrawHistos(hist_S_merge + hist_C_merge, label_S_merge+label_C_merge, peakTSWindow[0], peakTSWindow[1], "peak TS", 0.5, 1e6, "Counts",
+            output_name,
+            dology=True, drawoptions="HIST", mycolors=threColorsSci+threColorsCer, addOverflow=True, extraToDraw=extraToDraw,
+            legendPos=(0.18, 0.5, 0.90, 0.65),
+            legendNCols = len(hist_C_merge),
+            outdir=outdir_plots)
+        plots.append(output_name + ".png")
 
+<<<<<<< HEAD
             chan_Cer = DRSBoard.GetChannelByTower(iTowerX, iTowerY, isCer=True)
             chan_Sci = DRSBoard.GetChannelByTower(
                 iTowerX, iTowerY, isCer=False)
@@ -280,76 +357,154 @@ else:
 
     generate_html(plots, outdir_plots,
               output_html=f"html/Run{runNumber}/DRS_peakT/viewer.html")
+=======
+        generate_html(plots, outdir_plots,
+                output_html=f"html/Run{runNumber}/DRS_peakT/viewer.html")
+>>>>>>> d33413c (splitboard)
     
-# DeltaT distributions of DRS peaks passing certain thresholds
-plots = []
-infile_name = f"{rootdir}/drs_all_channels_1D.root"
-infile = ROOT.TFile(infile_name, "READ")
-hist_C_merge = None
-hist_S_merge = None
-for _, DRSBoard in DRSBoards.items():
-    boardNo = DRSBoard.boardNo
-    for iTowerX, iTowerY in DRSBoard.GetListOfTowers():
-        sTowerX = number2string(iTowerX)
-        sTowerY = number2string(iTowerY)
+    # DeltaT distributions of DRS peaks passing certain thresholds
+    plots = []
+    infile_name = f"{rootdir}/drs_all_channels_1D.root"
+    infile = ROOT.TFile(infile_name, "READ")
+    hist_C_merge = [None]*(len(threBinsCer)-1)
+    hist_S_merge = [None]*(len(threBinsSci)-1)
+    hist_C_merge_board = {}
+    hist_S_merge_board = {}
+    for _, DRSBoard in DRSBoards.items():
+        boardNo = DRSBoard.boardNo
+        hist_C_merge_board[boardNo] = [None]*(len(threBinsCer)-1)
+        hist_S_merge_board[boardNo] = [None]*(len(threBinsSci)-1)
+        for iTowerX, iTowerY in DRSBoard.GetListOfTowers():
+            sTowerX = number2string(iTowerX)
+            sTowerY = number2string(iTowerY)
+            for ithr in range(len(threBinsCer)-1):
+                hist_C_name = f"hist_DRS_Board{boardNo}_Cer_{sTowerX}_{sTowerY}_deltaT_amp{threBinsCer[ithr]}-{threBinsCer[ithr+1]}"
+                hist_C = infile.Get(hist_C_name)
+                if hist_C:
+                    if hist_C_merge[ithr]:
+                        hist_C_merge[ithr].Add(hist_C)
+                    else:
+                        hist_C_merge[ithr] = hist_C.Clone(f"hist_DRS_Cer_deltaT_merge_amp{threBinsCer[ithr]}-{threBinsCer[ithr+1]}")
+                    if hist_C_merge_board[boardNo][ithr]:
+                        hist_C_merge_board[boardNo][ithr].Add(hist_C)
+                    else:
+                        hist_C_merge_board[boardNo][ithr] = hist_C.Clone(f"hist_DRS_board{boardNo}_Cer_deltaT_merge_amp{threBinsCer[ithr]}-{threBinsCer[ithr+1]}")
+            for ithr in range(len(threBinsSci)-1):
+                hist_S_name = f"hist_DRS_Board{boardNo}_Sci_{sTowerX}_{sTowerY}_deltaT_amp{threBinsSci[ithr]}-{threBinsSci[ithr+1]}"
+                hist_S = infile.Get(hist_S_name)
+                if hist_S:
+                    if hist_S_merge[ithr]:
+                        hist_S_merge[ithr].Add(hist_S)
+                    else:
+                        hist_S_merge[ithr] = hist_S.Clone(f"hist_DRS_Sci_deltaT_merge_amp{threBinsSci[ithr]}-{threBinsSci[ithr+1]}")
+                    if hist_S_merge_board[boardNo][ithr]:
+                        hist_S_merge_board[boardNo][ithr].Add(hist_S)
+                    else:
+                        hist_S_merge_board[boardNo][ithr] = hist_S.Clone(f"hist_DRS_board{boardNo}_Sci_deltaT_merge_amp{threBinsSci[ithr]}-{threBinsSci[ithr+1]}")
+    
+    if None in  hist_C_merge or None in hist_S_merge:
+        print(
+            f"Warning: Histograms hist_DRS_Cer_deltaT_merge or hist_DRS_Sci_deltaT_merge has None")
+    else:
+        bin_centers = (np.arange(deltaTSWindow[0]+1024,deltaTSWindow[1]+1024)+np.arange(deltaTSWindow[0]+1025,deltaTSWindow[1]+1025))/2
+        C_mean = []
+        C_std = []
+        S_mean = []
+        S_std = []
+        label_C_merge = []
+        label_S_merge = []
+        for ithr in range(len(threBinsCer)-1):
+            hist_C_merge_window_y = np.array([hist_C_merge[ithr].GetBinContent(i) for i in range(deltaTSWindow[0]+1025,deltaTSWindow[1]+1025)])
+            C_mean.append(np.average(bin_centers, weights = hist_C_merge_window_y))
+            C_std.append(np.sqrt(np.average((bin_centers-C_mean[ithr])**2, weights = hist_C_merge_window_y)))
+            hist_C_merge[ithr].Rebin(10)
+            label_C_merge.append(f"Cer amp: {threBinsCer[ithr]}-{threBinsCer[ithr+1]}")
+        for ithr in range(len(threBinsSci)-1):
+            hist_S_merge_window_y = np.array([hist_S_merge[ithr].GetBinContent(i) for i in range(deltaTSWindow[0]+1025,deltaTSWindow[1]+1025)])
+            S_mean.append(np.average(bin_centers, weights = hist_S_merge_window_y))
+            S_std.append(np.sqrt(np.average((bin_centers-S_mean[ithr])**2, weights = hist_S_merge_window_y)))
+            hist_S_merge[ithr].Rebin(10)
+            label_S_merge.append(f"Sci amp: {threBinsSci[ithr]}-{threBinsSci[ithr+1]}")
+        extraToDraw = ROOT.TPaveText(0.15, 0.65, 0.9, 0.9, "NDC")
+        extraToDraw.SetTextAlign(11)
+        extraToDraw.SetFillColorAlpha(0, 0)
+        extraToDraw.SetBorderSize(0)
+        extraToDraw.SetTextFont(42)
+        extraToDraw.SetTextSize(0.04)
+        extraToDraw.AddText(f"Merged delta TS for all broads")
+        extraToDraw.AddText(f"TS window: [{deltaTSWindow[0]+1024}, {deltaTSWindow[1]+1024}]")
+        extraToDraw.AddText(f"Sci amp: {threBinsSci}, Cer amp: {threBinsCer}")
+        extraToDraw.AddText("Sci std: "+", ".join([f"{S_std[ithr]:.2f}" for ithr in range(len(threBinsSci)-1)]))
+        extraToDraw.AddText("Cer std: "+", ".join([f"{C_std[ithr]:.2f}" for ithr in range(len(threBinsCer)-1)]))
+        output_name = f"DRS_DeltaT_Merged"
+        outdir_plots = outdir + "/DRS_1D"
+        DrawHistos(hist_S_merge + hist_C_merge, label_S_merge+label_C_merge, deltaTSWindow[0]+1024, deltaTSWindow[1]+1024, "peak TS - trigger TS + 1024", 0.5, 1e6, "Counts",
+            output_name,
+            dology=True, drawoptions="HIST", mycolors=threColorsSci+threColorsCer, addOverflow=True, extraToDraw=extraToDraw,
+            legendPos=(0.18, 0.5, 0.90, 0.65),
+            legendNCols = len(hist_C_merge),
+            outdir=outdir_plots)
+        plots.append(output_name + ".png")
 
-        chan_Cer = DRSBoard.GetChannelByTower(iTowerX, iTowerY, isCer=True)
-        chan_Sci = DRSBoard.GetChannelByTower(iTowerX, iTowerY, isCer=False)
-
-        hist_C_name = f"hist_DRS_Board{boardNo}_Cer_{sTowerX}_{sTowerY}_deltaT"
-        hist_S_name = f"hist_DRS_Board{boardNo}_Sci_{sTowerX}_{sTowerY}_deltaT"
-        hist_C = infile.Get(hist_C_name)
-        hist_S = infile.Get(hist_S_name)
-        if hist_C:
-            if hist_C_merge:
-                hist_C_merge.Add(hist_C)
-            else:
-                hist_C_merge = hist_C.Clone("hist_DRS_Cer_deltaT_merge")
-        if hist_S:
-            if hist_S_merge:
-                hist_S_merge.Add(hist_S)
-            else:
-                hist_S_merge = hist_S.Clone("hist_DRS_Sci_deltaT_merge")
-if not hist_C_merge or not hist_S_merge:
-    print(
-        f"Warning: Histograms hist_DRS_Cer_deltaT_merge or hist_DRS_Sci_deltaT_merge created")
-else:
-    bin_edges = np.linspace(deltaTSWindow[0]+1024, deltaTSWindow[1]+1024, deltaTSWindow[1] - deltaTSWindow[0] + 1, dtype='float64')
-    hist_C_merge_window =  hist_C_merge.Rebin(deltaTSWindow[1] - deltaTSWindow[0],"hist_C_merge_window",bin_edges)
-    hist_C_merge_window.ClearUnderflowAndOverflow()
-    hist_S_merge_window =  hist_S_merge.Rebin(deltaTSWindow[1] - deltaTSWindow[0],"hist_S_merge_window",bin_edges)
-    hist_S_merge_window.ClearUnderflowAndOverflow()
-
+    C_mean = []
+    C_std = []
+    S_mean = []
+    S_std = []
+    label_C_merge = []
+    label_S_merge = []
     bin_centers = (np.arange(deltaTSWindow[0]+1024,deltaTSWindow[1]+1024)+np.arange(deltaTSWindow[0]+1025,deltaTSWindow[1]+1025))/2
-    hist_C_merge_window_y = np.array([hist_C_merge.GetBinContent(i) for i in range(deltaTSWindow[0]+1025,deltaTSWindow[1]+1025)])
-    C_mean = np.average(bin_centers, weights = hist_C_merge_window_y)
-    C_std = np.sqrt(np.average((bin_centers-C_mean)**2, weights = hist_C_merge_window_y))
-    hist_S_merge_window_y = np.array([hist_S_merge.GetBinContent(i) for i in range(deltaTSWindow[0]+1025,deltaTSWindow[1]+1025)])
-    S_mean = np.average(bin_centers, weights = hist_S_merge_window_y)
-    S_std = np.sqrt(np.average((bin_centers-S_mean)**2, weights = hist_S_merge_window_y))
-    hist_C_merge.Rebin(10)
-    hist_S_merge.Rebin(10)
-    extraToDraw = ROOT.TPaveText(0.20, 0.65, 0.60, 0.90, "NDC")
+    for boardNo in hist_C_merge_board.keys():
+        print("hist_C_merge_board",hist_C_merge_board)
+        print("hist_C_merge_board[boardNo]",hist_C_merge_board[boardNo])
+        if None in hist_C_merge_board[boardNo] or None in hist_S_merge_board[boardNo]:
+            print(
+            f"Warning: Histograms hist_DRS_board{boardNo}_Cer_deltaT_merge or hist_DRS_board{boardNo}_Sci_deltaT_merge has None")
+        else:
+            for ithr in range(len(threBinsCer)-1):
+                hist_C_merge_window_y = np.array([hist_C_merge_board[boardNo][ithr].GetBinContent(i) for i in range(deltaTSWindow[0]+1025,deltaTSWindow[1]+1025)])
+                C_mean.append(np.average(bin_centers, weights = hist_C_merge_window_y))
+                C_std.append(np.sqrt(np.average((bin_centers-C_mean[ithr])**2, weights = hist_C_merge_window_y)))
+                hist_C_merge_board[boardNo][ithr].Rebin(10)
+                label_C_merge.append(f"Board {boardNo}, Cer amp: {threBinsCer[ithr]}-{threBinsCer[ithr+1]}")
+            for ithr in range(len(threBinsSci)-1):
+                hist_S_merge_window_y = np.array([hist_S_merge_board[boardNo][ithr].GetBinContent(i) for i in range(deltaTSWindow[0]+1025,deltaTSWindow[1]+1025)])
+                S_mean.append(np.average(bin_centers, weights = hist_S_merge_window_y))
+                S_std.append(np.sqrt(np.average((bin_centers-S_mean[ithr])**2, weights = hist_S_merge_window_y)))
+                hist_S_merge_board[boardNo][ithr].Rebin(10)
+                label_S_merge.append(f"Board {boardNo}, Sci amp: {threBinsSci[ithr]}-{threBinsSci[ithr+1]}")
+    extraToDraw = ROOT.TPaveText(0.15, 0.65, 0.9, 0.9, "NDC")
     extraToDraw.SetTextAlign(11)
     extraToDraw.SetFillColorAlpha(0, 0)
     extraToDraw.SetBorderSize(0)
     extraToDraw.SetTextFont(42)
     extraToDraw.SetTextSize(0.04)
-    extraToDraw.AddText(f"Merged delta TS for all broads")
+    extraToDraw.AddText(f"Merged delta TS")
     extraToDraw.AddText(f"TS window: [{deltaTSWindow[0]+1024}, {deltaTSWindow[1]+1024}]")
-    extraToDraw.AddText(f"Sci mean: {S_mean:.2f}, std: {S_std:.2f}")
-    extraToDraw.AddText(f"Cer mean: {C_mean:.2f}, std: {C_std:.2f}")
-    output_name = f"DRS_DeltaT_Merged"
+    for ib, boardNo in enumerate(hist_C_merge_board.keys()):
+        extraToDraw.AddText(f"Board {boardNo} Sci amp: {threBinsSci}, Cer amp: {threBinsCer}")
+        print("ib",ib, "ib*(len(threBinsSci)-1)+ithr",ib*(len(threBinsSci)-1)+ithr)
+        print("len(S_std)",len(S_std))
+        extraToDraw.AddText("Sci std: "+", ".join([f"{S_std[ib*(len(threBinsSci)-1)+ithr]:.2f}" for ithr in range(len(threBinsSci)-1)]))
+        extraToDraw.AddText("Cer std: "+", ".join([f"{C_std[ib*(len(threBinsCer)-1)+ithr]:.2f}" for ithr in range(len(threBinsCer)-1)]))
+    output_name = f"DRS_DeltaT_board_Merged"
     outdir_plots = outdir + "/DRS_1D"
-    DrawHistos([hist_C_merge,hist_S_merge], ["Cer","Sci"], deltaTSWindow[0]+1024, deltaTSWindow[1]+1024, "peak TS - trigger TS + 1024", 0.5, 1e6, "Counts",
+    hists_plot = []
+    for boardNo in hist_S_merge_board.keys():
+        for ithr in range(len(threBinsSci)-1):
+            hists_plot.append(hist_S_merge_board[boardNo][ithr])
+    for boardNo in hist_C_merge_board.keys():
+        for ithr in range(len(threBinsCer)-1):
+            hists_plot.append(hist_C_merge_board[boardNo][ithr])
+    DrawHistos(hists_plot, label_S_merge+label_C_merge, deltaTSWindow[0]+1024, deltaTSWindow[1]+1024, "peak TS - trigger TS + 1024", 0.5, 1e6, "Counts",
         output_name,
-        dology=True, drawoptions="HIST", mycolors=[2,4], addOverflow=True, extraToDraw=extraToDraw,
-        legendPos=(0.7, 0.88, 0.90, 0.68),
+        dology=True, drawoptions="HIST", mycolors=threBoardColorSci+threBoardColorCer, addOverflow=True, extraToDraw=extraToDraw,
+        legendPos=(0.18, 0.5, 0.90, 0.65),
+        legendNCols = len(hist_C_merge),
         outdir=outdir_plots)
     plots.append(output_name + ".png")
 
     generate_html(plots, outdir_plots,
-              output_html=f"html/Run{runNumber}/DRS_deltaT/viewer.html")
+                output_html=f"html/Run{runNumber}/DRS_deltaT/viewer.html")
 
 # DRS vs TS
 def makeDRS2DPlots(doSubtractMedian=False):
@@ -588,7 +743,12 @@ if __name__ == "__main__":
 
     output_htmls["fers 1D"] = makeFERS1DPlots()
     # makeDRS2DPlots()
+<<<<<<< HEAD
     output_htmls["drs 2D"] = makeDRS2DPlots(doSubtractMedian=True)
+=======
+    makeDRS1DPlots()
+    makeDRS2DPlots(doSubtractMedian=True)
+>>>>>>> d33413c (splitboard)
 
     output_htmls["time reference"] = compareTimeReferencePlots(True)
     output_htmls["hodo trigger"] = compareHodoTriggerPlots(True)

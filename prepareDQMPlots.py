@@ -3,14 +3,16 @@ import ROOT
 from utils.channel_map import buildDRSBoards, buildFERSBoards, buildTimeReferenceChannels, buildHodoTriggerChannels, buildHodoPosChannels, mapDRSChannel2TriggerChannel
 from utils.utils import number2string, getDataFile, processDRSBoards, filterPrefireEvents
 
+<<<<<<< HEAD
+=======
+from utils.channel_map import buildDRSBoards, buildFERSBoards, buildTriggerChannels
+from utils.utils import number2string, getDataFile, processDRSBoards, processDRSPeaks, getBranchStats
+>>>>>>> d33413c (splitboard)
 from runNumber import runNumber
+from DRSPeakTre import threBinsSci,threBinsCer
 import time
 
 print("Start running prepareDQMPlots.py")
-
-
-deltaTThreCer = 12.0
-deltaTThreSci = 15.0
 
 
 # multi-threading support
@@ -48,73 +50,18 @@ for _, FERSBoard in FERSBoards.items():
             f"FERS_Board{boardNo}_energyLG_{channel.channelNo}",
             f"FERS_Board{boardNo}_energyLG[{channel.channelNo}]"
         )
+<<<<<<< HEAD
 
 rdf = processDRSBoards(rdf)
+=======
+branches = [str(b) for b in rdf.GetColumnNames()]
+pattern = re.compile(r"DRS.*Group.*Channel.*")
+drs_branches = [b for b in branches if pattern.search(b)]
+stats = getBranchStats(rdf, drs_branches)
+rdf = processDRSBoards(rdf, DRSBoards)
+>>>>>>> d33413c (splitboard)
 
-ROOT.gInterpreter.Declare("""
-#include "ROOT/RVec.hxx"
-#include <algorithm>
-
-size_t compute_peakT(ROOT::RVec<float> vec, float threshold) {
-    if (vec.empty()) return -9999;
-    size_t peakT = std::distance(vec.begin(),std::max_element(vec.begin(), vec.end()));
-    std::sort(vec.begin(), vec.end());
-    size_t n = vec.size();
-    if (n % 2 == 0){
-        if  (vec[n-1] - 0.5 * (vec[n / 2 - 1] + vec[n / 2]) < threshold) return -9999;
-    }
-    else{
-        if (vec[n-1] - vec[n / 2] < 15) return -9999;
-    }
-    return peakT;
-}
-""")
-for varname in drs_branches:
-    rdf = rdf.Define(
-        f"{varname}_peakT_threCer",
-        f"compute_peakT({varname},{deltaTThreCer})"
-    )
-    rdf = rdf.Define(
-        f"{varname}_peakT_threSci",
-        f"compute_peakT({varname},{deltaTThreSci})"
-    )
-
-
-ROOT.gInterpreter.Declare("""
-#include "ROOT/RVec.hxx"
-#include <algorithm>
-
-size_t compute_triggerT(ROOT::RVec<float> vec) {
-    if (vec.empty()) return -9999;
-    size_t minT = std::distance(vec.begin(),std::min_element(vec.begin(), vec.end()));
-    size_t maxT = std::distance(vec.begin(),std::max_element(vec.begin(), std::min_element(vec.begin(), vec.end())));
-                             
-    double half = (*std::min_element(vec.begin(), vec.end()) + *std::max_element(vec.begin(), std::min_element(vec.begin(), vec.end())))/2;
-                          
-    for(size_t iT = maxT; iT < minT; iT++){
-        if( (vec[iT] > half) && (vec[iT+1] <= half) )         
-            return (vec[iT] - half) > (half - vec[iT+1]) ? (iT+1) : iT ;      
-    }
-    return 0;          
-}
-""")
-
-for trigname in trigger_channels:
-    rdf = rdf.Define(
-        f"{trigname}_triggerT",
-        f"compute_triggerT({trigname})"
-    )
-
-for varname in drs_branches:
-    triggername = mapDRSChannel2TriggerChannel(varname)
-    rdf = rdf.Define(
-        f"{varname}_deltaT_threCer",
-        f"{varname}_peakT_threCer - {trigname}_triggerT + 1024"
-    )
-    rdf = rdf.Define(
-        f"{varname}_deltaT_threSci",
-        f"{varname}_peakT_threSci - {trigname}_triggerT + 1024"
-    )
+rdf = processDRSPeaks(rdf, drs_branches, trigger_channels)
 
 def makeFERS1DPlots():
     hists1d_FERS = []
@@ -227,42 +174,24 @@ def makeDRS1DPlots():
                 if chan is None:
                     continue
                 channelName = chan.GetChannelName()
-                value_mean = stats[channelName]['mean']
-                hist = rdf.Histo1D((
-                    f"hist_DRS_Board{boardNo}_{var}_{sTowerX}_{sTowerY}",
-                    f"DRS Board {boardNo} - {var} iTowerX {sTowerX} iTowerY {sTowerY};{var} Variable;Counts",
-                    200, value_mean - 100, value_mean + 100),
-                    channelName
-                )
-                if var == "Cer":
-                    hist_peakT = rdf.Histo1D((
-                        f"hist_DRS_Board{boardNo}_{var}_{sTowerX}_{sTowerY}_peakT",
-                        f"DRS Board {boardNo} - {var} iTowerX {sTowerX} iTowerY {sTowerY} (peak T);peak TS;Counts",
+                threBins = threBinsCer if var == "Cer" else threBinsSci
+                for i in range(len(threBins)-1):
+                    thre_low = threBins[i]
+                    thre_high = threBins[i+1]
+                    hist_peakT = rdf.Filter(f"{channelName}_peakA > {thre_low} && {channelName}_peakA <= {thre_high}",f"{channelName} amplitude in [{thre_low}, {thre_high}]").Histo1D((
+                        f"hist_DRS_Board{boardNo}_{var}_{sTowerX}_{sTowerY}_peakT_amp{thre_low}-{thre_high}",
+                        f"DRS Board {boardNo} - {var} iTowerX {sTowerX} iTowerY {sTowerY} (peak T, amp {thre_low}-{thre_high});delta TS;Counts",
                         1024, 0, 1024),
-                        channelName + "_peakT_threCer"
-                    )
-                    hist_deltaT = rdf.Histo1D((
-                        f"hist_DRS_Board{boardNo}_{var}_{sTowerX}_{sTowerY}_deltaT",
-                        f"DRS Board {boardNo} - {var} iTowerX {sTowerX} iTowerY {sTowerY} (delta T +1024);peak TS - trigger TS + 1024;Counts",
+                        f"{channelName}_peakT"
+                        )
+                    hist_deltaT = rdf.Filter(f"{channelName}_peakA > {thre_low} && {channelName}_peakA <= {thre_high}",f"{channelName} amplitude in [{thre_low}, {thre_high}]").Histo1D((
+                        f"hist_DRS_Board{boardNo}_{var}_{sTowerX}_{sTowerY}_deltaT_amp{thre_low}-{thre_high}",
+                        f"DRS Board {boardNo} - {var} iTowerX {sTowerX} iTowerY {sTowerY} (delta T + 1024, amp {thre_low}-{thre_high});peak TS - trigger TS + 1024;Counts",
                         2048, 0, 2048),
-                        channelName + "_deltaT_threCer"
+                        f"{channelName}_deltaT"
                     )
-                else:
-                    hist_peakT = rdf.Histo1D((
-                        f"hist_DRS_Board{boardNo}_{var}_{sTowerX}_{sTowerY}_peakT",
-                        f"DRS Board {boardNo} - {var} iTowerX {sTowerX} iTowerY {sTowerY} (peak T);delta TS;Counts",
-                        1024, 0, 1024),
-                        channelName + "_peakT_threSci"
-                    )
-                    hist_deltaT = rdf.Histo1D((
-                        f"hist_DRS_Board{boardNo}_{var}_{sTowerX}_{sTowerY}_deltaT",
-                        f"DRS Board {boardNo} - {var} iTowerX {sTowerX} iTowerY {sTowerY} (delta T + 1024);peak TS - trigger TS + 1024;Counts",
-                        2048, 0, 2048),
-                        channelName + "_deltaT_threSci"
-                    )
-                hists1d_DRS.append(hist)
-                hists1d_DRS.append(hist_peakT)
-                hists1d_DRS.append(hist_deltaT)
+                    hists1d_DRS.append(hist_peakT)
+                    hists1d_DRS.append(hist_deltaT)
     return hists1d_DRS
 
 
@@ -351,7 +280,7 @@ if __name__ == "__main__":
     # hists2d_FERS = makeFERS2DPlots()
     # hists2d_FERS_vs_Event = trackFERSPlots()
 
-    # hists1d_DRS = makeDRS1DPlots()
+    hists1d_DRS = makeDRS1DPlots()
     hists2d_DRS_vs_TS = makeDRS2DPlots()
     # hists2d_DRS_vs_Event = trackDRSPlots()
 
@@ -387,11 +316,12 @@ if __name__ == "__main__":
     #    hist.Write()
     # outfile.Close()
     #
-    # outfile_DRS = ROOT.TFile(f"{rootdir}/drs_all_channels_1D.root", "RECREATE")
-    # for hist in hists1d_DRS:
-    #    hist.SetDirectory(outfile_DRS)
-    #    hist.Write()
-    # outfile_DRS.Close()
+    outfile_DRS = ROOT.TFile(f"{rootdir}/drs_all_channels_1D.root", "RECREATE")
+    for hist in hists1d_DRS:
+        hist.SetDirectory(outfile_DRS)
+        hist.Write()
+    outfile_DRS.Close()
+
     outfile_DRS = ROOT.TFile(f"{rootdir}/drs_all_channels_2D.root", "RECREATE")
     for hist in hists2d_DRS_vs_TS:
         hist.SetDirectory(outfile_DRS)
