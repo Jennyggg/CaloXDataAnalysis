@@ -1,13 +1,8 @@
 import os
 import ROOT
 from utils.channel_map import buildDRSBoards, buildFERSBoards, buildTimeReferenceChannels, buildHodoTriggerChannels, buildHodoPosChannels, mapDRSChannel2TriggerChannel
-from utils.utils import number2string, getDataFile, processDRSBoards, filterPrefireEvents
+from utils.utils import number2string, getDataFile, processDRSBoards, filterPrefireEvents, processDRSPeaks, getBranchStats
 
-<<<<<<< HEAD
-=======
-from utils.channel_map import buildDRSBoards, buildFERSBoards, buildTriggerChannels
-from utils.utils import number2string, getDataFile, processDRSBoards, processDRSPeaks, getBranchStats
->>>>>>> d33413c (splitboard)
 from runNumber import runNumber
 from DRSPeakTre import threBinsSci,threBinsCer
 import time
@@ -50,16 +45,12 @@ for _, FERSBoard in FERSBoards.items():
             f"FERS_Board{boardNo}_energyLG_{channel.channelNo}",
             f"FERS_Board{boardNo}_energyLG[{channel.channelNo}]"
         )
-<<<<<<< HEAD
 
-rdf = processDRSBoards(rdf)
-=======
 branches = [str(b) for b in rdf.GetColumnNames()]
 pattern = re.compile(r"DRS.*Group.*Channel.*")
 drs_branches = [b for b in branches if pattern.search(b)]
 stats = getBranchStats(rdf, drs_branches)
 rdf = processDRSBoards(rdf, DRSBoards)
->>>>>>> d33413c (splitboard)
 
 rdf = processDRSPeaks(rdf, drs_branches, trigger_channels)
 

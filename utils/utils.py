@@ -1,3 +1,5 @@
+from utils.channel_map import mapDRSChannel2TriggerChannel
+import ROOT
 def number2string(n):
     s = str(n)
     return s.replace('-', 'm').replace('.', 'p')
@@ -83,3 +85,71 @@ def filterPrefireEvents(rdf, TS=350):
     rdf = rdf.Filter("NormalFired == 1")
 
     return rdf, rdf_prefilter
+
+def processDRSPeaks(rdf,drs_branches,trigger_channels):
+    ROOT.gInterpreter.Declare("""
+    #include "ROOT/RVec.hxx"
+    #include <algorithm>
+    float compute_peakAmp(ROOT::RVec<float> vec) {
+        if (vec.empty()) return -9999;
+        float peak_amp = *std::max_element(vec.begin(), vec.end());
+        std::sort(vec.begin(), vec.end());
+        size_t n = vec.size();
+        if (n % 2 == 0){
+            return peak_amp - (vec[n / 2 - 1] + vec[n / 2])/2;
+        }
+        else{
+            return peak_amp - vec[n / 2];
+        }
+    }
+    """)
+
+    ROOT.gInterpreter.Declare("""
+    #include "ROOT/RVec.hxx"
+    #include <algorithm>
+    size_t compute_peakT(ROOT::RVec<float> vec) {
+        if (vec.empty()) return -9999;
+        return std::distance(vec.begin(),std::max_element(vec.begin(), vec.end()));
+    }
+    """)
+    for varname in drs_branches:
+        rdf = rdf.Define(
+            f"{varname}_peakT",
+            f"compute_peakT({varname})"
+        )
+        rdf = rdf.Define(
+            f"{varname}_peakA",
+            f"compute_peakAmp({varname})"
+        )
+    ROOT.gInterpreter.Declare("""
+    #include "ROOT/RVec.hxx"
+    #include <algorithm>
+    size_t compute_triggerT(ROOT::RVec<float> vec) {
+        if (vec.empty()) return -9999;
+        size_t minT = std::distance(vec.begin(),std::min_element(vec.begin(), vec.end()));
+        size_t maxT = std::distance(vec.begin(),std::max_element(vec.begin(), std::min_element(vec.begin(), vec.end())));
+                             
+        double half = (*std::min_element(vec.begin(), vec.end()) + *std::max_element(vec.begin(), std::min_element(vec.begin(), vec.end())))/2;
+                          
+        for(size_t iT = maxT; iT < minT; iT++){
+            if( (vec[iT] > half) && (vec[iT+1] <= half) )         
+                return (vec[iT] - half) > (half - vec[iT+1]) ? (iT+1) : iT ;      
+        }
+        return 0;          
+    }
+    """)
+
+    for trigname in trigger_channels:
+        rdf = rdf.Define(
+            f"{trigname}_triggerT",
+            f"compute_triggerT({trigname})"
+        )
+    for varname in drs_branches:
+        triggername = mapDRSChannel2TriggerChannel(varname)
+        print("DRS channel: ", varname, "mapped trigger: ",triggername)
+        rdf = rdf.Define(
+            f"{varname}_deltaT",
+            f"{varname}_peakT - {triggername}_triggerT + 1024"
+        )
+    return rdf
+

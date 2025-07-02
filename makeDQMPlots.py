@@ -251,43 +251,6 @@ def makeDRS1DPlots():
             outdir=outdir_plots)
         plots.append(output_name + ".png")
 
-<<<<<<< HEAD
-            chan_Cer = DRSBoard.GetChannelByTower(iTowerX, iTowerY, isCer=True)
-            chan_Sci = DRSBoard.GetChannelByTower(
-                iTowerX, iTowerY, isCer=False)
-
-            hist_C_name = f"hist_DRS_Board{boardNo}_Cer_{sTowerX}_{sTowerY}"
-            hist_S_name = f"hist_DRS_Board{boardNo}_Sci_{sTowerX}_{sTowerY}"
-            hist_C = infile.Get(hist_C_name)
-            hist_S = infile.Get(hist_S_name)
-            if not hist_C or not hist_S:
-                print(
-                    f"Warning: Histograms {hist_C_name} or {hist_S_name} not found in {infile_name}")
-                continue
-
-            extraToDraw = ROOT.TPaveText(0.20, 0.65, 0.60, 0.90, "NDC")
-            extraToDraw.SetTextAlign(11)
-            extraToDraw.SetFillColorAlpha(0, 0)
-            extraToDraw.SetBorderSize(0)
-            extraToDraw.SetTextFont(42)
-            extraToDraw.SetTextSize(0.04)
-            extraToDraw.AddText(f"Board: {DRSBoard.boardNo}")
-            extraToDraw.AddText(f"iTowerX: {iTowerX}")
-            extraToDraw.AddText(f"iTowerY: {iTowerY}")
-            extraToDraw.AddText(
-                f"Cer Channel: ({chan_Cer.groupNo}, {chan_Cer.channelNo})")
-            extraToDraw.AddText(
-                f"Sci Channel: ({chan_Sci.groupNo}, {chan_Sci.channelNo})")
-
-            output_name = f"DRS_Variable_Board{boardNo}_iTowerX{sTowerX}_iTowerY{sTowerY}"
-            outdir_plots = outdir + "/DRS_1D"
-            DrawHistos([hist_C, hist_S], ["Cer", "Sci"], 1400, 2500, "DRS Output", 1, 1e12, "Counts",
-                       output_name,
-                       dology=True, drawoptions="HIST", mycolors=[2, 4], addOverflow=True, addUnderflow=True, extraToDraw=extraToDraw,
-                       legendPos=(0.60, 0.78, 0.90, 0.68),
-                       outdir=outdir_plots)
-            plots.append(output_name + ".png")
-
     output_html = f"html/Run{runNumber}/DRS_1D/index.html"
     generate_html(plots, outdir_plots,
                   output_html=output_html)
@@ -357,10 +320,6 @@ else:
 
     generate_html(plots, outdir_plots,
               output_html=f"html/Run{runNumber}/DRS_peakT/viewer.html")
-=======
-        generate_html(plots, outdir_plots,
-                output_html=f"html/Run{runNumber}/DRS_peakT/viewer.html")
->>>>>>> d33413c (splitboard)
     
     # DeltaT distributions of DRS peaks passing certain thresholds
     plots = []
@@ -742,13 +701,8 @@ if __name__ == "__main__":
     output_htmls["drs mapping"] = DrawDRSBoards(run=runNumber)
 
     output_htmls["fers 1D"] = makeFERS1DPlots()
-    # makeDRS2DPlots()
-<<<<<<< HEAD
+    output_htmls["drs 1D"] = makeDRS1DPlots()
     output_htmls["drs 2D"] = makeDRS2DPlots(doSubtractMedian=True)
-=======
-    makeDRS1DPlots()
-    makeDRS2DPlots(doSubtractMedian=True)
->>>>>>> d33413c (splitboard)
 
     output_htmls["time reference"] = compareTimeReferencePlots(True)
     output_htmls["hodo trigger"] = compareHodoTriggerPlots(True)
